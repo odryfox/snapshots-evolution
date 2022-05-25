@@ -1,3 +1,4 @@
+from collections import defaultdict
 from dataclasses import dataclass
 from typing import List
 
@@ -20,19 +21,64 @@ class CalculateObjectsEvolutionsService:
         exclude_fields_names: List[str],
     ) -> List[ObjectEvolutions]:
 
-        snapshots_filtered = self._filter_snapshots_by_field_name(
+        snapshots_filtered = self._filter_snapshots_by_required_fields_names(
             snapshots=snapshots,
-            field_name=key_field_name,
-        )
-        snapshots_filtered = self._filter_snapshots_by_field_name(
-            snapshots=snapshots_filtered,
-            field_name=datetime_field_name,
+            required_fields_names=[key_field_name, datetime_field_name],
         )
 
         snapshots_groups_dtos = self._group_snapshots_by_key(
             snapshots=snapshots_filtered,
             key_field_name=key_field_name,
         )
+
+        objects_evolutions = self._calculate_objects_evolutions(
+            snapshots_groups_dtos=snapshots_groups_dtos,
+            datetime_field_name=datetime_field_name,
+            exclude_fields_names=exclude_fields_names,
+        )
+
+        return objects_evolutions
+
+    def _filter_snapshots_by_required_fields_names(
+        self,
+        snapshots: list[dict],
+        required_fields_names: list[str],
+    ) -> list[dict]:
+        snapshots_filtered = snapshots
+        for required_field_name in required_fields_names:
+            snapshots_filtered = [
+                s for s in snapshots_filtered
+                if required_field_name in s
+            ]
+        return snapshots_filtered
+
+    def _group_snapshots_by_key(
+        self,
+        snapshots: list[dict],
+        key_field_name: str,
+    ) -> list[SnapshotsGroupDTO]:
+
+        snapshots_groups_by_key_map = defaultdict(list)
+
+        for snapshot in snapshots:
+            key = snapshot[key_field_name]
+            snapshots_groups_by_key_map[key].append(snapshot)
+
+        snapshots_groups_dtos = [
+            SnapshotsGroupDTO(
+                key=key,
+                snapshots=snapshots,
+            )
+            for key, snapshots in snapshots_groups_by_key_map.items()
+        ]
+        return snapshots_groups_dtos
+
+    def _calculate_objects_evolutions(
+        self,
+        snapshots_groups_dtos: list[SnapshotsGroupDTO],
+        datetime_field_name: str,
+        exclude_fields_names: list[str],
+    ) -> list[ObjectEvolutions]:
 
         exclude_fields_names_set = set(exclude_fields_names + [datetime_field_name])
 
@@ -64,40 +110,6 @@ class CalculateObjectsEvolutionsService:
             )
 
         return objects_evolutions
-
-    def _filter_snapshots_by_field_name(
-        self,
-        snapshots: list[dict],
-        field_name: str,
-    ) -> list[dict]:
-        return [s for s in snapshots if field_name in s]
-
-    def _group_snapshots_by_key(
-        self,
-        snapshots: list[dict],
-        key_field_name: str,
-    ) -> list[SnapshotsGroupDTO]:
-
-        snapshots_groups_dtos = []
-        key_to_group_id_map = {}
-
-        for snapshot in snapshots:
-            key = snapshot[key_field_name]
-
-            if key not in key_to_group_id_map:
-                snapshots_groups_dtos.append(
-                    SnapshotsGroupDTO(
-                        key=key,
-                        snapshots=[],
-                    )
-                )
-                group_id = len(snapshots_groups_dtos) - 1
-                key_to_group_id_map[key] = group_id
-
-            group_id = key_to_group_id_map[key]
-            snapshots_groups_dtos[group_id].snapshots.append(snapshot)
-
-        return snapshots_groups_dtos
 
     def _sort_snapshots_by_field_name(
         self,
